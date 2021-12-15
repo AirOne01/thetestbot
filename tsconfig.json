@@ -1,0 +1,24 @@
+// tsconfig.json
+{
+    "compilerOptions": {
+        "target": "ESNext",
+        "module": "CommonJS",
+        "sourceMap": true,
+        "declaration": true,
+        "outDir": "./dist",
+        "rootDir": "./src",
+        "baseUrl": "./src",
+        "typeRoots": [
+            "node_modules/@types"
+        ],
+        "esModuleInterop": true,
+        "allowSyntheticDefaultImports": true
+    },
+    "include": [
+        "src/**/*"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist"
+    ]
+}
