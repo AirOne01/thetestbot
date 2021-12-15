@@ -1,5 +1,7 @@
+import AdmZip from 'adm-zip';
 import axios from 'axios';
 import fs from 'fs';
+import * as https from "https";
 import path from 'path';
 import pptr from 'puppeteer';
 import prompts from 'prompts';
@@ -12,7 +14,12 @@ async function connectWebClient(browser: pptr.Browser): Promise<pptr.Page> {
     const filePath = path.join(__dirname, '../creds.yml');
 
     let page = await browser.newPage();
-    await page.goto('https://discord.com/login', {waitUntil: 'networkidle2'});
+    try {
+        await page.goto('https://discord.com/login', {waitUntil: 'networkidle0'});
+    } catch (e) {
+        err('Could reach the login page' + e);
+    }
+    await page.setDefaultNavigationTimeout(0);  // disable navigation delay errors
 
     let username: string;
     let password: string;
@@ -40,29 +47,40 @@ async function connectWebClient(browser: pptr.Browser): Promise<pptr.Page> {
         })();
     }
 
+    // décompressez-le
+    log('Extracting anti-captcha plugin...')
+    const zip = new AdmZip("./plugin.zip");
+    await zip.extractAllTo("./plugin/", true);
+
+    // définissez la clé API dans le fichier de configuration
+    await new Promise<void>((resolve, reject) => {
+        log('Setting it up...');
+        if (fs.existsSync('./plugin/js/config_ac_api_key.js')) {
+            let confData = fs.readFileSync('./plugin/js/config_ac_api_key.js', 'utf8');
+            confData = confData.replace(/antiCapthaPredefinedApiKey = ''/g, `antiCapthaPredefinedApiKey = '${captchaKey}'`);
+            fs.writeFileSync('./plugin/js/config_ac_api_key.js', confData, 'utf8');
+            resolve();
+        } else {
+            err('plugin configuration not found!')
+            reject();
+        }
+    });
+
     // login
     log(`Logging in as "${username}"`);
     await page.type('input[name="email"]', username, {delay: 20});
     await page.type('input[name="password"]', password, {delay: 20});
     await page.click('button[type="submit"]');
 
-    const captcha = new Captcha(captchaKey);
-    //await setTimeout(captcha.findId, 2000, page)  // get captcha id
-    ok(`Found hCaptcha API site id: "${captcha.id}"`);
-    await captcha.resolve();  // send the infos to the captcha solver
-    // then get the response
-    let i = 1;
-    while (i <= 10) {
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        const res = await captcha.getSolution();
-        if (i == 10 && !res) {
-            err('Could not find captcha solution');
-            process.exit(1);
-        }
-        if (res) i = 11;
-        i++;
-    }
-    ok(`Captcha solved successfully !`);
+    ////////////////////////////////////////////////////////////////////////////
+
+    log('Solving captcha (waiting for selector)... This could take up to a minute.');
+    await page.waitForSelector('div[href="/channels/@me"', {timeout: 120000}).catch(() => {
+        err('Timed out waiting for the selector (120s).');
+        process.exit(1);
+    });
+
+    ok('Successfully logged in !');
 
     return page;
 }

@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.connectWebClient = void 0;
+const adm_zip_1 = __importDefault(require("adm-zip"));
 const axios_1 = __importDefault(require("axios"));
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
@@ -13,7 +14,13 @@ let captchaKey = null;
 async function connectWebClient(browser) {
     const filePath = path_1.default.join(__dirname, '../creds.yml');
     let page = await browser.newPage();
-    await page.goto('https://discord.com/login', { waitUntil: 'networkidle2' });
+    try {
+        await page.goto('https://discord.com/login', { waitUntil: 'networkidle0' });
+    }
+    catch (e) {
+        (0, util_1.err)('Could reach the login page' + e);
+    }
+    await page.setDefaultNavigationTimeout(0); // disable navigation delay errors
     let username;
     let password;
     console.log();
@@ -39,29 +46,36 @@ async function connectWebClient(browser) {
             })).password;
         })();
     }
+    // décompressez-le
+    (0, util_1.log)('Extracting anti-captcha plugin...');
+    const zip = new adm_zip_1.default("./plugin.zip");
+    await zip.extractAllTo("./plugin/", true);
+    // définissez la clé API dans le fichier de configuration
+    await new Promise((resolve, reject) => {
+        (0, util_1.log)('Setting it up...');
+        if (fs_1.default.existsSync('./plugin/js/config_ac_api_key.js')) {
+            let confData = fs_1.default.readFileSync('./plugin/js/config_ac_api_key.js', 'utf8');
+            confData = confData.replace(/antiCapthaPredefinedApiKey = ''/g, `antiCapthaPredefinedApiKey = '${captchaKey}'`);
+            fs_1.default.writeFileSync('./plugin/js/config_ac_api_key.js', confData, 'utf8');
+            resolve();
+        }
+        else {
+            (0, util_1.err)('plugin configuration not found!');
+            reject();
+        }
+    });
     // login
     (0, util_1.log)(`Logging in as "${username}"`);
     await page.type('input[name="email"]', username, { delay: 20 });
     await page.type('input[name="password"]', password, { delay: 20 });
     await page.click('button[type="submit"]');
-    const captcha = new Captcha(captchaKey);
-    //await setTimeout(captcha.findId, 2000, page)  // get captcha id
-    (0, util_1.ok)(`Found hCaptcha API site id: "${captcha.id}"`);
-    await captcha.resolve(); // send the infos to the captcha solver
-    // then get the response
-    let i = 1;
-    while (i <= 10) {
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        const res = await captcha.getSolution();
-        if (i == 10 && !res) {
-            (0, util_1.err)('Could not find captcha solution');
-            process.exit(1);
-        }
-        if (res)
-            i = 11;
-        i++;
-    }
-    (0, util_1.ok)(`Captcha solved successfully !`);
+    ////////////////////////////////////////////////////////////////////////////
+    (0, util_1.log)('Solving captcha (waiting for selector)... This could take up to a minute.');
+    await page.waitForSelector('div[href="/channels/@me"', { timeout: 120000 }).catch(() => {
+        (0, util_1.err)('Timed out waiting for the selector (120s).');
+        process.exit(1);
+    });
+    (0, util_1.ok)('Successfully logged in !');
     return page;
 }
 exports.connectWebClient = connectWebClient;
