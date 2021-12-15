@@ -2,6 +2,9 @@
 node_modules/
 package-lock.json
 
+# build
+dist/
+
 # jetbrains
 .idea/
 
@@ -9,4 +12,4 @@ package-lock.json
 creds.yml
 
 # anti-captcha plugin
-plugin/**/*
+plugin/
